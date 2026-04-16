@@ -9,6 +9,8 @@
 #include <inc/tm4c123gh6pm.h>
 #include <stdint.h>
 
+// test edit
+
 void adc_init(void) {
     //enable the clock to ADC Module 0
     SYSCTL_RCGCADC_R |= 0x1;
