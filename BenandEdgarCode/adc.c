@@ -41,7 +41,7 @@ void adc_init(void) {
     ADC0_EMUX_R &= ~0xF000;
     
     //enable 16x hardware averaging for ADC0
-    ADC0_SAC_R &= ~0x8;
+    ADC0_SAC_R &= ~0x7;
     ADC0_SAC_R |= 0x4;
     
     //set AIN10 to be the input for sequencer 3
