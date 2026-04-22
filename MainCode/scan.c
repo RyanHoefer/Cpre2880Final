@@ -1,4 +1,8 @@
 #include "scan.h"
+#include <stdio.h>
+#include <string.h>
+#include "lcd.h"
+#include "Timer.h"
 
 void singleScan(scan_data* data, int angle, bool ir, bool ping) {
 
@@ -18,8 +22,17 @@ void singleScan(scan_data* data, int angle, bool ir, bool ping) {
 
 }
 
-void scanField(int start_angle, int end_angle) {
+void scanField(int start_angle, int end_angle, int angle_step) {
 
+    int angle;
+    for (angle = start_angle; angle <= end_angle; angle += ANGLE_STEP) {
 
+        cyBOT_Scan(angle, &scan_results);
+        int current_ir_val = scan_results.IR_raw_val;
+
+        char message[70];
+        snprintf(message, 70, "Angle: %3d      Distance: %3.2f      IR Raw Value: %4d\r\n", angle, scan_results.sound_dist, current_ir_val);
+        uart_sendStr(message);
+    }
 
 }
