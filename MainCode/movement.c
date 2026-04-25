@@ -63,6 +63,29 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
         uart_sendStr(uart_message);
 
+        //send warning message if stopped due to bump or cliff detection or object detection
+        if (sensor_data->bumpRight == 1) {
+            uart_sendStr("Bump detected on right. Stopped moving forward.\r\n");
+        }
+        else if (sensor_data->bumpLeft == 1) {
+            uart_sendStr("Bump detected on left. Stopped moving forward.\r\n");
+        }
+        else if (sensor_data->cliffLeft == 1) {
+            uart_sendStr("Cliff detected on left. Stopped moving forward.\r\n");
+        }
+        else if (sensor_data->cliffFrontLeft == 1) {
+            uart_sendStr("Cliff detected on front left. Stopped moving forward.\r\n");
+        }
+        else if (sensor_data->cliffFrontRight == 1) {
+            uart_sendStr("Cliff detected on front right. Stopped moving forward.\r\n");
+        }
+        else if (sensor_data->cliffRight == 1) {
+            uart_sendStr("Cliff detected on right. Stopped moving forward.\r\n");
+        }
+        else if (forward_distance <= 15.0) {
+            uart_sendStr("Object detected in front. Stopped moving forward.\r\n");
+        }
+
         return distance_traveled;
     }
 
@@ -99,6 +122,14 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         //send final uart message
         snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
         uart_sendStr(uart_message);
+
+        //send warning message if stopped due to cliff detection
+        if (sensor_data->cliffLeft == 1) {
+            uart_sendStr("Cliff detected on left. Stopped moving backward.\r\n");
+        }
+        else if (sensor_data->cliffRight == 1) {
+            uart_sendStr("Cliff detected on right. Stopped moving backward.\r\n");
+        }
 
         return distance_traveled;
     }
