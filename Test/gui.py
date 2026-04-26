@@ -8,19 +8,22 @@ import queue
 class CybotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Cybot Field Interface - CPRE 288")
-        self.root.geometry("700x950")
+        self.root.title("Cybot Field Interface - CPRE 2880")
+        self.root.geometry("1920x1080")
         
         self.msg_queue = queue.Queue()
         self.running = True
         self.sock = None
         
         # --- Bot State Variables ---
-        self.canvas_width = 600
-        self.canvas_height = 400
+        self.canvas_width = 1800
+        self.canvas_height = 600
         self.bot_x = self.canvas_width / 2
         self.bot_y = self.canvas_height - 40
         self.bot_heading = 90.0
+
+        # Mapping scale: pixels per centimeter
+        self.pixel_scale = 3.0
 
         self.setup_ui()
         self.setup_key_bindings()
@@ -41,8 +44,8 @@ class CybotGUI:
         self.connect_btn.grid(row=0, column=2, padx=5)
 
         # --- Movement Controls ---
-        move_frame = tk.LabelFrame(self.root, text="Movement Controls", font=("Arial", 10, "bold"), padx=10, pady=10)
-        move_frame.pack(pady=5, fill="x", padx=20)
+        move_frame = tk.LabelFrame(self.root, text="Movement Controls", font=("Arial", 10, "bold"), padx=10, pady=0)
+        move_frame.pack(pady=0, fill="x", padx=20)
 
         dist_frame = tk.Frame(move_frame)
         dist_frame.pack(pady=5)
@@ -68,11 +71,14 @@ class CybotGUI:
         tk.Button(turn_frame, text="Right 45° →", width=10, command=lambda: self.send_command("g")).grid(row=1, column=2, padx=2, pady=2)
         tk.Button(turn_frame, text="Right 90° →", width=10, command=lambda: self.send_command("h")).grid(row=1, column=3, padx=2, pady=2)
 
-        tk.Button(move_frame, text="Exit Program", width=30, bg="#ffcccc", font=("Arial", 10, "bold"), command=lambda: self.send_command("o")).pack(pady=10)
+        control_frame = tk.Frame(move_frame)
+        control_frame.pack(pady=5)
+        tk.Button(control_frame, text="Deliver Pizza", width=22, font=("Arial", 10, "bold"), command=lambda: self.send_command("i")).grid(row=0, column=0, padx=2, pady=0)
+        tk.Button(control_frame, text="Exit Program", width=22, bg="#ffcccc", font=("Arial", 10, "bold"), command=lambda: self.send_command("o")).grid(row=0, column=1, padx=2, pady=0)
 
         # --- Real-Time Data Label ---
         self.scan_label = tk.Label(self.root, text="Angle: ---  Distance: ---  Raw IR Value: ---", font=("Consolas", 14, "bold"))
-        self.scan_label.pack(pady=10)
+        self.scan_label.pack(pady=0)
 
         # --- Map Controls ---
         map_ctrl_frame = tk.Frame(self.root)
@@ -116,7 +122,27 @@ class CybotGUI:
         self.bot_y = self.canvas_height - 40
         self.bot_heading = 90.0
         self.canvas.delete("all")
+        self.draw_scale()
         self.draw_bot()
+
+    def draw_scale(self):
+        # Draw a 50cm reference scale in the bottom left corner
+        cm_length = 50
+        pixel_length = cm_length * self.pixel_scale
+
+        start_x = 15
+        start_y = self.canvas_height - 20
+        end_x = start_x + pixel_length
+        end_y = start_y
+
+        # Main horizontal line
+        self.canvas.create_line(start_x, start_y, end_x, end_y, fill="white", width=2, tags="scale")
+        # Left tick
+        self.canvas.create_line(start_x, start_y-5, start_x, start_y+5, fill="white", width=2, tags="scale")
+        # Right tick
+        self.canvas.create_line(end_x, end_y-5, end_x, end_y+5, fill="white", width=2, tags="scale")
+        # Label text
+        self.canvas.create_text(start_x + (pixel_length/2), start_y - 12, text=f"{cm_length} cm", fill="white", font=("Arial", 9, "bold"), tags="scale")
 
     def draw_bot(self):
         self.canvas.delete("bot")
@@ -205,8 +231,7 @@ class CybotGUI:
             self.log_event(f"[RX] {msg}")
 
     def update_bot_position(self, distance_cm):
-        scale = 3.0 
-        pixel_dist = distance_cm * scale
+        pixel_dist = distance_cm * self.pixel_scale
         rad = math.radians(self.bot_heading)
         self.bot_x += pixel_dist * math.cos(rad)
         self.bot_y -= pixel_dist * math.sin(rad) 
@@ -218,8 +243,7 @@ class CybotGUI:
         self.draw_bot()
 
     def draw_scan_point(self, servo_angle, distance):
-        scale = 3.0 
-        pixel_dist = distance * scale
+        pixel_dist = distance * self.pixel_scale
         world_angle = self.bot_heading + (servo_angle - 90)
         rad = math.radians(world_angle)
         x = self.bot_x + (pixel_dist * math.cos(rad))
