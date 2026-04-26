@@ -85,5 +85,10 @@ int main(){
         else if (uart_command == 'o') {
             break;
         }
+
+        //display message on LCD
+        else if (uart_command == 'i') {
+            lcd_printf("Delivered pizza!");
+        }
     }
 }
