@@ -22,6 +22,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
 
         //start driving
         oi_setWheels(speed,speed);
+        oi_update(sensor_data);
 
         //check all sensors and continue to move forward
         while((sensor_data->bumpRight == 0) && 
@@ -31,7 +32,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
                 (sensor_data->cliffFrontLeft == 0) && 
                 (sensor_data->cliffFrontRight == 0) && 
                 (sensor_data->cliffRight == 0) &&
-                (forward_distance > 15.0)) {
+                (forward_distance > 10.0)) {
 
             //update sensors from roomba
             oi_update(sensor_data);
@@ -98,7 +99,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         oi_setWheels(speed*-1,speed*-1);
 
         //check sensors and continue reversing
-        while((distance_traveled > 0) && 
+        while((distance_traveled < 0) &&
                 (sensor_data->cliffLeft == 0) &&  
                 (sensor_data->cliffRight == 0)) {
 
@@ -106,11 +107,11 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
             oi_update(sensor_data);
 
             //record distance travelled
-            distance_traveled += sensor_data->distance;
+            distance_traveled -= sensor_data->distance;
 
             //update distance over uart if the bot has travelled more than 20mm
             if (fabs(distance_traveled - last_update_dist) > 20.0) {
-                snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
+                snprintf(uart_message, 18, "Moved %.0f mm\r\n", (distance_traveled - last_update_dist) * -1);
                 uart_sendStr(uart_message);
                 last_update_dist = distance_traveled;
             }
@@ -120,7 +121,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         oi_setWheels(0,0);
 
         //send final uart message
-        snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
+        snprintf(uart_message, 18, "Moved %.0f mm\r\n", (distance_traveled - last_update_dist) * -1);
         uart_sendStr(uart_message);
 
         //send warning message if stopped due to cliff detection
