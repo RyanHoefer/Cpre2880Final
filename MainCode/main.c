@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 
-int main(){
+int mainCode(){
     timer_init();
     lcd_init();
     uart_init();
@@ -24,6 +24,8 @@ int main(){
     oi_t *sensor_data = oi_alloc();
     oi_init(sensor_data);
 
+    servo_move(90);
+
     char uart_command;
     while (true) {
         //check for command from PuTTY over UART
@@ -31,10 +33,10 @@ int main(){
 
         //move forward at various distances and speeds
         if (uart_command == 'q') {
-            move(sensor_data, 100, 10);
+            move(sensor_data, 100, 100);
         }
         else if (uart_command == 'w') {
-            move(sensor_data, 250, 50);
+            move(sensor_data, 250, 100);
         }
         else if (uart_command == 'e') {
             move(sensor_data, 500, 100);
@@ -42,10 +44,10 @@ int main(){
 
         //move backward at various distances and speeds
         else if (uart_command == 'z') {
-            move(sensor_data, -100, 10);
+            move(sensor_data, -100, 100);
         }
         else if (uart_command == 'x') {
-            move(sensor_data, -250, 50);
+            move(sensor_data, -250, 100);
         }
         else if (uart_command == 'c') {
             move(sensor_data, -500, 100);
@@ -78,7 +80,7 @@ int main(){
 
         //scan and send data over uart
         else if (uart_command == 'p') {
-            scan(sensor_data);
+            scanField(0, 180, 1);
         }
 
         //exit program
@@ -91,4 +93,19 @@ int main(){
             lcd_printf("Delivered pizza!");
         }
     }
+}
+
+void Calibrate(void) {
+    timer_init();
+    lcd_init();
+    uart_init();
+    servo_init();
+    adc_init();
+    ping_init();
+
+    servo_calibrate();
+}
+
+int main(void) {
+    mainCode();
 }
