@@ -146,7 +146,8 @@ class CybotGUI:
 
     def draw_bot(self):
         self.canvas.delete("bot")
-        r = 15
+        cm_radius = 17
+        r = cm_radius * self.pixel_scale
         self.canvas.create_oval(self.bot_x - r, self.bot_y - r, self.bot_x + r, self.bot_y + r, fill="blue", outline="white", tags="bot")
         
         rad = math.radians(self.bot_heading)
@@ -207,7 +208,17 @@ class CybotGUI:
             self.scan_label.config(text=msg)
             angle = float(scan_match.group(1))
             distance = float(scan_match.group(2))
-            self.draw_scan_point(angle, distance)
+            ir_val = float(scan_match.group(3))
+            ir_distance = (4727.5 * pow(ir_val, -0.829) / 10)
+
+            distance += 17
+            ir_distance += 17
+            print(ir_distance)
+
+            if ((distance - 17) < 80 and ir_distance < 30):
+                self.draw_scan_point(angle, ir_distance)
+            else:
+                self.draw_scan_point(angle, distance)
             return 
 
         move_match = re.search(r"(forward|backward|moved?)\s*(-?\d+(?:\.\d+)?)", lower_msg)
