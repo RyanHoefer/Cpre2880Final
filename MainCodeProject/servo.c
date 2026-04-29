@@ -13,8 +13,8 @@
 //standard values are 16000 (1ms match) for 0 degrees (right), 32000 (2ms) for 180 degrees
 
 //these are the values for cybot 17
-int right_calibration_value = 7300;
-int left_calibration_value = 33740;
+int right_calibration_value = 7490;
+int left_calibration_value = 35230;
 int current_angle = 90;
 
  void servo_init(void) {
@@ -84,7 +84,7 @@ int current_angle = 90;
 
     int wait_time = abs(current_angle - degrees) * 10;
     if (wait_time < 20) {
-        wait_time = 60;
+        wait_time = 40;
     }
     timer_waitMillis(wait_time);
 

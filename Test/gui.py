@@ -219,7 +219,7 @@ class CybotGUI:
             angle = float(scan_match.group(1))
             ping_distance = float(scan_match.group(2))
             ir_value = int(scan_match.group(3))
-            ir_distance = (4727.5 * pow(ir_val, -0.829) / 10)
+            ir_distance = (4727.5 * pow(ir_value, -0.829) / 10)
 
             # Edge case: If starting a new sweep at angle 0, prime the previous value and skip logic
             if angle <= 2: # Give it a degree or two of leeway

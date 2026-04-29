@@ -8,7 +8,7 @@
 
 double move(oi_t *sensor_data, double distance_mm, int speed) {
 
-    char uart_message[18];
+    char uart_message[80];
 
     //if distance is positive move forward and check for bumps, cliffs, and forward distance using the ping sensor
     if (distance_mm > 0) {
@@ -28,10 +28,10 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         while((sensor_data->bumpRight == 0) && 
                 (sensor_data->bumpLeft == 0) && 
                 (distance_traveled < distance_mm) && 
-                (sensor_data->cliffLeft == 0) && 
-                (sensor_data->cliffFrontLeft == 0) && 
-                (sensor_data->cliffFrontRight == 0) && 
-                (sensor_data->cliffRight == 0) &&
+                (sensor_data->cliffLeftSignal > 1000 && sensor_data->cliffLeftSignal < 2500) &&
+                (sensor_data->cliffRightSignal > 1900 && sensor_data->cliffRightSignal < 2800) &&
+                (sensor_data->cliffFrontLeftSignal > 1000 && sensor_data->cliffFrontLeftSignal < 2300) &&
+                (sensor_data->cliffFrontRightSignal > 1000 && sensor_data->cliffFrontRightSignal < 2200) &&
                 (forward_distance > 10.0)) {
 
             //update sensors from roomba
@@ -51,7 +51,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
 
             //update distance over uart if the bot has travelled more than 20mm
             if (fabs(distance_traveled - last_update_dist) > 20.0) {
-                snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
+                snprintf(uart_message, 70, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
                 uart_sendStr(uart_message);
                 last_update_dist = distance_traveled;
             }
@@ -61,7 +61,7 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         oi_setWheels(0,0);
 
         //send final uart message
-        snprintf(uart_message, 18, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
+        snprintf(uart_message, 70, "Moved %.0f mm\r\n", distance_traveled - last_update_dist);
         uart_sendStr(uart_message);
 
         //send warning message if stopped due to bump or cliff detection or object detection
@@ -71,17 +71,37 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         if (sensor_data->bumpLeft == 1) {
             uart_sendStr("Bump detected on left. Stopped moving forward.\r\n");
         }
-        if (sensor_data->cliffLeft == 1) {
-            uart_sendStr("Cliff detected on left. Stopped moving forward.\r\n");
+        if (sensor_data->cliffLeftSignal < 1000) {
+            snprintf(uart_message, 70, "Cliff detected on left. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffLeftSignal);
+            uart_sendStr(uart_message);
         }
-        if (sensor_data->cliffFrontLeft == 1) {
-            uart_sendStr("Cliff detected on front left. Stopped moving forward.\r\n");
+        if (sensor_data->cliffLeftSignal > 2500) {
+            snprintf(uart_message, 70, "Boundary detected on left. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffLeftSignal);
+            uart_sendStr(uart_message);
         }
-        if (sensor_data->cliffFrontRight == 1) {
-            uart_sendStr("Cliff detected on front right. Stopped moving forward.\r\n");
+        if (sensor_data->cliffRightSignal < 1900) {
+            snprintf(uart_message, 70, "Cliff detected on right. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffRightSignal);
+            uart_sendStr(uart_message);
         }
-        if (sensor_data->cliffRight == 1) {
-            uart_sendStr("Cliff detected on right. Stopped moving forward.\r\n");
+        if (sensor_data->cliffRightSignal > 2800) {
+            snprintf(uart_message, 70, "Boundary detected on right. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffRightSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffFrontLeftSignal < 1000) {
+            snprintf(uart_message, 70, "Cliff detected on front left. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffFrontLeftSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffFrontLeftSignal > 2300) {
+            snprintf(uart_message, 80, "Boundary detected on front left. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffFrontLeftSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffFrontRightSignal < 1000) {
+            snprintf(uart_message, 70, "Cliff detected on front right. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffFrontRightSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffFrontRightSignal > 2200) {
+            snprintf(uart_message, 70, "Boundary detected on front right. Stopped moving forward. Value: %6d\r\n", sensor_data->cliffFrontRightSignal);
+            uart_sendStr(uart_message);
         }
         if (forward_distance <= 15.0) {
             uart_sendStr("Object detected in front. Stopped moving forward.\r\n");
@@ -100,10 +120,10 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
 
         //check sensors and continue reversing
         while((distance_traveled < 0) &&
-                (sensor_data->cliffLeft == 0) &&  
-                (sensor_data->cliffRight == 0)) {
+                (sensor_data->cliffLeftSignal > 1000 && sensor_data->cliffLeftSignal < 2500) &&
+                (sensor_data->cliffRightSignal > 1900 && sensor_data->cliffRightSignal < 2800)) {
 
-            //update sensors from rooba
+            //update sensors from roomba
             oi_update(sensor_data);
 
             //record distance travelled
@@ -125,11 +145,21 @@ double move(oi_t *sensor_data, double distance_mm, int speed) {
         uart_sendStr(uart_message);
 
         //send warning message if stopped due to cliff detection
-        if (sensor_data->cliffLeft == 1) {
-            uart_sendStr("Cliff detected on left. Stopped moving backward.\r\n");
+        if (sensor_data->cliffLeftSignal < 1000) {
+            snprintf(uart_message, 70, "Cliff detected on left. Stopped moving backward. Value: %6d\r\n", sensor_data->cliffLeftSignal);
+            uart_sendStr(uart_message);
         }
-        if (sensor_data->cliffRight == 1) {
-            uart_sendStr("Cliff detected on right. Stopped moving backward.\r\n");
+        if (sensor_data->cliffLeftSignal > 2500) {
+            snprintf(uart_message, 70, "Boundary detected on left. Stopped moving backward. Value: %6d\r\n", sensor_data->cliffLeftSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffRightSignal < 1900) {
+            snprintf(uart_message, 70, "Cliff detected on right. Stopped moving backward. Value: %6d\r\n", sensor_data->cliffRightSignal);
+            uart_sendStr(uart_message);
+        }
+        if (sensor_data->cliffRightSignal > 2800) {
+            snprintf(uart_message, 70, "Boundary detected on right. Stopped moving backward. Value: %6d\r\n", sensor_data->cliffRightSignal);
+            uart_sendStr(uart_message);
         }
 
         return distance_traveled;
