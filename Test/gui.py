@@ -25,6 +25,10 @@ class CybotGUI:
         # Mapping scale: pixels per centimeter
         self.pixel_scale = 3.0
 
+        # --- Sensor Fusion Variables ---
+        self.tracking_object = False
+        self.prev_ir_value = 0
+
         self.setup_ui()
         self.setup_key_bindings()
         
@@ -86,6 +90,12 @@ class CybotGUI:
         
         tk.Button(map_ctrl_frame, text="📡 Trigger Scan", width=22, bg="#ccffcc", font=("Arial", 10, "bold"), command=lambda: self.send_command("p")).grid(row=0, column=0, padx=10)
         tk.Button(map_ctrl_frame, text="Reset Map & Bot", width=22, command=self.clear_canvas, font=("Arial", 10)).grid(row=0, column=1, padx=10)
+
+        # New slider for tuning the IR edge detection threshold on the fly
+        tk.Label(map_ctrl_frame, text="IR Edge Threshold (Δ):", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=(15, 0))
+        self.ir_threshold_slider = tk.Scale(map_ctrl_frame, from_=50, to_=800, orient=tk.HORIZONTAL, length=150)
+        self.ir_threshold_slider.set(200) # Default starting threshold
+        self.ir_threshold_slider.grid(row=0, column=3, padx=5)
 
         # --- Field View (Canvas) ---
         self.canvas = tk.Canvas(self.root, width=self.canvas_width, height=self.canvas_height, bg="black")
@@ -207,19 +217,46 @@ class CybotGUI:
         if scan_match:
             self.scan_label.config(text=msg)
             angle = float(scan_match.group(1))
-            distance = float(scan_match.group(2))
-            ir_val = float(scan_match.group(3))
+            ping_distance = float(scan_match.group(2))
+            ir_value = int(scan_match.group(3))
             ir_distance = (4727.5 * pow(ir_val, -0.829) / 10)
 
-            distance += 17
-            ir_distance += 17
-            print(ir_distance)
+            # Edge case: If starting a new sweep at angle 0, prime the previous value and skip logic
+            if angle <= 2: # Give it a degree or two of leeway
+                self.prev_ir_value = ir_value
+                self.tracking_object = False
+                return
+            
+            threshold = self.ir_threshold_slider.get()
+            ir_delta = ir_value - self.prev_ir_value
 
-            if ((distance - 17) < 80 and ir_distance < 30):
-                self.draw_scan_point(angle, ir_distance)
-            else:
-                self.draw_scan_point(angle, distance)
-            return 
+            # Detect rising edge (Significant increase = start of object)
+            if not self.tracking_object and ir_delta > threshold:
+                self.tracking_object = True
+                self.log_event(f"[SCAN] Object Edge Found at {angle}°")
+
+            # Detect falling edge (Significant decrease = end of object)
+            elif self.tracking_object and ir_delta < -threshold:
+                self.tracking_object = False
+                self.log_event(f"[SCAN] Object Ended at {angle}°")
+
+            # If we are currently tracking an object, plot its Ping distance!
+            if self.tracking_object:
+                self.draw_scan_point(angle, ping_distance)
+
+            # Store current value for the next loop
+            self.prev_ir_value = ir_value
+            return
+
+            # distance += 17
+            # ir_distance += 17
+            # print(ir_distance)
+
+            # if ((distance - 17) < 80 and ir_distance < 30):
+            #     self.draw_scan_point(angle, ir_distance)
+            # else:
+            #     self.draw_scan_point(angle, distance)
+            # return 
 
         move_match = re.search(r"(forward|backward|moved?)\s*(-?\d+(?:\.\d+)?)", lower_msg)
         if move_match:
