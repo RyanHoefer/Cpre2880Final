@@ -125,12 +125,12 @@ class CybotGUI:
         self.log_text.pack(pady=5)
 
     def setup_bindings(self):
-        self.root.bind("<w>", lambda event: self.send_command("w 10"))
-        self.root.bind("<a>", lambda event: self.send_command("a 15"))
-        self.root.bind("<s>", lambda event: self.send_command("s 10"))
-        self.root.bind("<d>", lambda event: self.send_command("d 15"))
-        self.root.bind("<space>", lambda event: self.send_command("x 0"))
-        self.root.bind("<m>", lambda event: self.send_command("m 0")) # Bound to 'M' key
+        self.root.bind("<w>", lambda event: self.send_command("q"))
+        self.root.bind("<a>", lambda event: self.send_command("a"))
+        self.root.bind("<s>", lambda event: self.send_command("z"))
+        self.root.bind("<d>", lambda event: self.send_command("f"))
+        self.root.bind("<space>", lambda event: self.send_command("p"))
+        #self.root.bind("<m>", lambda event: self.send_command("m 0")) # Bound to 'M' key
 
         # Mouse Pan and Zoom bindings
         self.canvas.bind("<ButtonPress-1>", self.on_pan_start)
