@@ -366,7 +366,7 @@ class CybotGUI:
             # return 
 
         # 2. Parse Hazard Detections (Cliff/Boundary)
-        if "cliff" in lower_msg or "boundary" in lower_msg:
+        if "cliff" in lower_msg or "boundary" in lower_msg or "object detected" in lower_msg:
             sensor_angle = 0 # Default (Front Center)
             
             # Check specific sensors (check front left/right before generic left/right)
@@ -378,6 +378,8 @@ class CybotGUI:
                 sensor_angle = 90
             elif "right" in lower_msg:
                 sensor_angle = -90
+            elif "object detected" in lower_msg:
+                sensor_angle = 0
                 
             is_cliff = "cliff" in lower_msg
             self.add_hazard_point(sensor_angle, is_cliff)
