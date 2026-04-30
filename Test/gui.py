@@ -36,6 +36,10 @@ class CybotGUI:
         self.path_points = [(0.0, 0.0)]
         self.scan_points = []
 
+        # Hazard Storage
+        self.cliff_points = []
+        self.boundary_points = []
+
         # --- Sensor Fusion Variables ---
         self.tracking_object = False
         self.prev_ir_value = 0
@@ -203,19 +207,31 @@ class CybotGUI:
             if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
                 self.canvas.create_oval(sx-2, sy-2, sx+2, sy+2, fill="#00ff00", outline="#00ff00")
 
-        # 4. Draw Bot Body
+        # 4. Draw Boundaries (White)
+        for wx, wy in self.boundary_points:
+            sx, sy = self.world_to_screen(wx, wy)
+            if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
+                self.canvas.create_oval(sx-4, sy-4, sx+4, sy+4, fill="white", outline="white")
+
+        # 5. Draw Cliffs (Blue)
+        for wx, wy in self.cliff_points:
+            sx, sy = self.world_to_screen(wx, wy)
+            if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
+                self.canvas.create_oval(sx-4, sy-4, sx+4, sy+4, fill="#0088ff", outline="#0088ff")
+
+        # 6. Draw Bot Body
         bot_sx, bot_sy = self.world_to_screen(self.bot_world_x, self.bot_world_y)
         r_pixels = self.bot_radius_cm * self.zoom
         self.canvas.create_oval(bot_sx - r_pixels, bot_sy - r_pixels, bot_sx + r_pixels, bot_sy + r_pixels, fill="blue", outline="white")
         
-        # 5. Draw Scanner Origin Point (Front of bot)
+        # 7. Draw Scanner Origin Point (Front of bot)
         rad_heading = math.radians(self.bot_heading)
         scan_wx = self.bot_world_x + self.sensor_offset_cm * math.cos(rad_heading)
         scan_wy = self.bot_world_y + self.sensor_offset_cm * math.sin(rad_heading)
         scan_sx, scan_sy = self.world_to_screen(scan_wx, scan_wy)
         self.canvas.create_oval(scan_sx-3, scan_sy-3, scan_sx+3, scan_sy+3, fill="red", outline="white")
 
-        # 6. Draw Heading Arrow
+        # 8. Draw Heading Arrow
         end_wx = self.bot_world_x + (20 * math.cos(rad_heading))
         end_wy = self.bot_world_y + (20 * math.sin(rad_heading))
         end_sx, end_sy = self.world_to_screen(end_wx, end_wy)
@@ -229,6 +245,8 @@ class CybotGUI:
         self.bot_heading = 90.0
         self.path_points = [(0.0, 0.0)]
         self.scan_points = []
+        self.cliff_points = []
+        self.boundary_points = []
         self.tracking_object = False
         self.view_cx = 0.0
         self.view_cy = 20.0 # Offset camera slightly up so bot starts near bottom
@@ -347,6 +365,23 @@ class CybotGUI:
             #     self.draw_scan_point(angle, distance)
             # return 
 
+        # 2. Parse Hazard Detections (Cliff/Boundary)
+        if "cliff" in lower_msg or "boundary" in lower_msg:
+            sensor_angle = 0 # Default (Front Center)
+            
+            # Check specific sensors (check front left/right before generic left/right)
+            if "front left" in lower_msg:
+                sensor_angle = 45
+            elif "front right" in lower_msg:
+                sensor_angle = -45
+            elif "left" in lower_msg:
+                sensor_angle = 90
+            elif "right" in lower_msg:
+                sensor_angle = -90
+                
+            is_cliff = "cliff" in lower_msg
+            self.add_hazard_point(sensor_angle, is_cliff)
+
         move_match = re.search(r"(forward|backward|moved?)\s*(-?\d+(?:\.\d+)?)", lower_msg)
         if move_match:
             direction = move_match.group(1)
@@ -390,6 +425,23 @@ class CybotGUI:
         obj_y = scanner_y + distance_cm * math.sin(rad_scan)
 
         self.scan_points.append((obj_x, obj_y))
+        self.queue_redraw()
+
+    def add_hazard_point(self, relative_angle, is_cliff):
+        """Calculates the world coordinates of the hazard at the edge of the bot"""
+        # Calculate world angle by adding bot's heading to the relative sensor angle
+        world_angle = self.bot_heading + relative_angle
+        rad_hazard = math.radians(world_angle)
+        
+        # Hazard is at the perimeter of the bot (distance = bot_radius_cm)
+        hazard_x = self.bot_world_x + self.bot_radius_cm * math.cos(rad_hazard)
+        hazard_y = self.bot_world_y + self.bot_radius_cm * math.sin(rad_hazard)
+        
+        if is_cliff:
+            self.cliff_points.append((hazard_x, hazard_y))
+        else:
+            self.boundary_points.append((hazard_x, hazard_y))
+            
         self.queue_redraw()
 
     def log_event(self, text):
