@@ -15,22 +15,33 @@ class CybotGUI:
         self.running = True
         self.sock = None
         
-        # --- Bot State Variables ---
-        self.canvas_width = 1800
-        self.canvas_height = 600
-        self.bot_x = self.canvas_width / 2
-        self.bot_y = self.canvas_height - 40
-        self.bot_heading = 90.0
-
-        # Mapping scale: pixels per centimeter
-        self.pixel_scale = 3.0
+        # --- GUI Viewport Variables ---
+        self.canvas_width = 600
+        self.canvas_height = 400
+        self.view_cx = 0.0 # Camera center X (in world cm)
+        self.view_cy = 20.0 # Camera center Y (in world cm)
+        self.zoom = 3.0 # Pixels per cm
+        self.needs_redraw = False
+        
+        # --- Bot State & Mapping (World Coordinates in cm) ---
+        self.bot_world_x = 0.0
+        self.bot_world_y = 0.0
+        self.bot_heading = 90.0 # 90 is North/Up
+        
+        # Cybot physical dimensions
+        self.bot_radius_cm = 16.0 / 2.0 
+        self.sensor_offset_cm = 8.0 # Distance from center of bot to the IR/Ping sensors
+        
+        # Data storage for the infinite map
+        self.path_points = [(0.0, 0.0)]
+        self.scan_points = []
 
         # --- Sensor Fusion Variables ---
         self.tracking_object = False
         self.prev_ir_value = 0
 
         self.setup_ui()
-        self.setup_key_bindings()
+        self.setup_bindings()
         
         self.root.after(100, self.process_queue)
 
@@ -89,7 +100,7 @@ class CybotGUI:
         map_ctrl_frame.pack(pady=5)
         
         tk.Button(map_ctrl_frame, text="📡 Trigger Scan", width=22, bg="#ccffcc", font=("Arial", 10, "bold"), command=lambda: self.send_command("p")).grid(row=0, column=0, padx=10)
-        tk.Button(map_ctrl_frame, text="Reset Map & Bot", width=22, command=self.clear_canvas, font=("Arial", 10)).grid(row=0, column=1, padx=10)
+        tk.Button(map_ctrl_frame, text="Reset Map & Bot", width=22, command=self.reset_map_data, font=("Arial", 10)).grid(row=0, column=1, padx=10)
 
         # New slider for tuning the IR edge detection threshold on the fly
         tk.Label(map_ctrl_frame, text="IR Edge Threshold (Δ):", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=(15, 0))
@@ -98,17 +109,18 @@ class CybotGUI:
         self.ir_threshold_slider.grid(row=0, column=3, padx=5)
 
         # --- Field View (Canvas) ---
-        self.canvas = tk.Canvas(self.root, width=self.canvas_width, height=self.canvas_height, bg="black")
+        tk.Label(self.root, text="Map: Click & Drag to Pan | Scroll to Zoom", font=("Arial", 9, "italic")).pack()
+        self.canvas = tk.Canvas(self.root, width=self.canvas_width, height=self.canvas_height, bg="#111111", cursor="crosshair")
         self.canvas.pack()
         
-        self.clear_canvas() 
+        self.reset_map_data()
 
         # --- Event Log ---
-        tk.Label(self.root, text="Event Log (Bumps, Cliffs, Tx/Rx)").pack(pady=(10, 0))
+        tk.Label(self.root, text="Event Log").pack(pady=(10, 0))
         self.log_text = tk.Text(self.root, height=8, width=80, state=tk.DISABLED, bg="#f0f0f0")
         self.log_text.pack(pady=5)
 
-    def setup_key_bindings(self):
+    def setup_bindings(self):
         self.root.bind("<w>", lambda event: self.send_command("w 10"))
         self.root.bind("<a>", lambda event: self.send_command("a 15"))
         self.root.bind("<s>", lambda event: self.send_command("s 10"))
@@ -116,58 +128,113 @@ class CybotGUI:
         self.root.bind("<space>", lambda event: self.send_command("x 0"))
         self.root.bind("<m>", lambda event: self.send_command("m 0")) # Bound to 'M' key
 
-    def send_command(self, cmd_string):
-        if self.sock:
-            try:
-                message = f"{cmd_string}\n"
-                self.sock.sendall(message.encode('utf-8'))
-                self.log_event(f"[TX] Sent command: '{cmd_string}'")
-            except Exception as e:
-                self.log_event(f"[ERROR] Failed to send: {e}")
+        # Mouse Pan and Zoom bindings
+        self.canvas.bind("<ButtonPress-1>", self.on_pan_start)
+        self.canvas.bind("<B1-Motion>", self.on_pan_drag)
+        # Windows/macOS Scroll
+        self.canvas.bind("<MouseWheel>", self.on_zoom)
+        # Linux Scroll
+        self.canvas.bind("<Button-4>", self.on_zoom)
+        self.canvas.bind("<Button-5>", self.on_zoom)
+
+        # --- Viewport & Rendering Functions ---
+    def on_pan_start(self, event):
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+
+    def on_pan_drag(self, event):
+        dx = event.x - self.pan_start_x
+        dy = event.y - self.pan_start_y
+        # Convert screen pixels moved to world coordinates moved
+        self.view_cx -= dx / self.zoom
+        self.view_cy += dy / self.zoom # +dy because screen Y is inverted
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+        self.queue_redraw()
+
+    def on_zoom(self, event):
+        # Determine scroll direction (cross-platform)
+        zoom_in = False
+        if event.num == 4 or (hasattr(event, 'delta') and event.delta > 0):
+            zoom_in = True
+        elif event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
+            zoom_in = False
+
+        if zoom_in:
+            self.zoom *= 1.1
         else:
-            self.log_event(f"[SYSTEM] Cannot send '{cmd_string}'. Not connected.")
+            self.zoom /= 1.1
 
-    def clear_canvas(self):
-        self.bot_x = self.canvas_width / 2
-        self.bot_y = self.canvas_height - 40
-        self.bot_heading = 90.0
+        # Limit zoom levels
+        self.zoom = max(0.5, min(self.zoom, 15.0))
+        self.queue_redraw()
+
+    def world_to_screen(self, wx, wy):
+        """Converts real-world cm to screen pixel coordinates, forcing Integers to prevent Tkinter crashes."""
+        sx = (self.canvas_width / 2) + (wx - self.view_cx) * self.zoom
+        sy = (self.canvas_height / 2) - (wy - self.view_cy) * self.zoom 
+        return int(sx), int(sy)
+
+    def queue_redraw(self):
+        self.needs_redraw = True
+
+    def perform_redraw(self):
+        """Erases and rebuilds the canvas entirely from the stored world data"""
         self.canvas.delete("all")
-        self.draw_scale()
-        self.draw_bot()
-
-    def draw_scale(self):
-        # Draw a 50cm reference scale in the bottom left corner
+        
+        # 1. Draw Grid/Scale Reference (Fixed to screen)
         cm_length = 50
-        pixel_length = cm_length * self.pixel_scale
+        pixel_length = cm_length * self.zoom
+        self.canvas.create_line(15, self.canvas_height-20, 15+pixel_length, self.canvas_height-20, fill="#555555", width=2)
+        self.canvas.create_text(15 + (pixel_length/2), self.canvas_height-30, text=f"{cm_length} cm", fill="#555555", font=("Arial", 8))
 
-        start_x = 15
-        start_y = self.canvas_height - 20
-        end_x = start_x + pixel_length
-        end_y = start_y
+        # 2. Draw Trajectory Path
+        if len(self.path_points) > 1:
+            screen_coords = []
+            for wx, wy in self.path_points:
+                sx, sy = self.world_to_screen(wx, wy)
+                screen_coords.extend([sx, sy])
+            self.canvas.create_line(*screen_coords, fill="white", width=2, dash=(4, 2))
 
-        # Main horizontal line
-        self.canvas.create_line(start_x, start_y, end_x, end_y, fill="white", width=2, tags="scale")
-        # Left tick
-        self.canvas.create_line(start_x, start_y-5, start_x, start_y+5, fill="white", width=2, tags="scale")
-        # Right tick
-        self.canvas.create_line(end_x, end_y-5, end_x, end_y+5, fill="white", width=2, tags="scale")
-        # Label text
-        self.canvas.create_text(start_x + (pixel_length/2), start_y - 12, text=f"{cm_length} cm", fill="white", font=("Arial", 9, "bold"), tags="scale")
+        # 3. Draw Scan Points
+        for wx, wy in self.scan_points:
+            sx, sy = self.world_to_screen(wx, wy)
+            # Only draw if visible on screen to save rendering time
+            if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
+                self.canvas.create_oval(sx-2, sy-2, sx+2, sy+2, fill="#00ff00", outline="#00ff00")
 
-    def draw_bot(self):
-        self.canvas.delete("bot")
-        cm_radius = 17
-        r = cm_radius * self.pixel_scale
-        self.canvas.create_oval(self.bot_x - r, self.bot_y - r, self.bot_x + r, self.bot_y + r, fill="blue", outline="white", tags="bot")
+        # 4. Draw Bot Body
+        bot_sx, bot_sy = self.world_to_screen(self.bot_world_x, self.bot_world_y)
+        r_pixels = self.bot_radius_cm * self.zoom
+        self.canvas.create_oval(bot_sx - r_pixels, bot_sy - r_pixels, bot_sx + r_pixels, bot_sy + r_pixels, fill="blue", outline="white")
         
-        rad = math.radians(self.bot_heading)
-        arrow_length = 25
-        end_x = self.bot_x + (arrow_length * math.cos(rad))
-        end_y = self.bot_y - (arrow_length * math.sin(rad)) 
-        
-        self.canvas.create_line(self.bot_x, self.bot_y, end_x, end_y, fill="yellow", arrow=tk.LAST, width=2, tags="bot")
-        self.canvas.create_text(self.bot_x, self.bot_y + 20, text="BOT", fill="white", font=("Arial", 8), tags="bot")
+        # 5. Draw Scanner Origin Point (Front of bot)
+        rad_heading = math.radians(self.bot_heading)
+        scan_wx = self.bot_world_x + self.sensor_offset_cm * math.cos(rad_heading)
+        scan_wy = self.bot_world_y + self.sensor_offset_cm * math.sin(rad_heading)
+        scan_sx, scan_sy = self.world_to_screen(scan_wx, scan_wy)
+        self.canvas.create_oval(scan_sx-3, scan_sy-3, scan_sx+3, scan_sy+3, fill="red", outline="white")
 
+        # 6. Draw Heading Arrow
+        end_wx = self.bot_world_x + (20 * math.cos(rad_heading))
+        end_wy = self.bot_world_y + (20 * math.sin(rad_heading))
+        end_sx, end_sy = self.world_to_screen(end_wx, end_wy)
+        self.canvas.create_line(bot_sx, bot_sy, end_sx, end_sy, fill="yellow", arrow=tk.LAST, width=2)
+
+        self.needs_redraw = False
+
+    def reset_map_data(self):
+        self.bot_world_x = 0.0
+        self.bot_world_y = 0.0
+        self.bot_heading = 90.0
+        self.path_points = [(0.0, 0.0)]
+        self.scan_points = []
+        self.tracking_object = False
+        self.view_cx = 0.0
+        self.view_cy = 20.0 # Offset camera slightly up so bot starts near bottom
+        self.queue_redraw()
+
+    # --- Communication & Data Processing ---
     def connect_to_bot(self):
         ip = self.ip_entry.get()
         port = 288
@@ -204,10 +271,32 @@ class CybotGUI:
         self.sock = None
 
     def process_queue(self):
-        while not self.msg_queue.empty():
-            msg = self.msg_queue.get()
-            self.parse_message(msg)
+        try:
+            # Process all pending messages
+            while not self.msg_queue.empty():
+                msg = self.msg_queue.get()
+                self.parse_message(msg)
+                
+            # Only execute the heavy drawing function once per frame, if needed
+            if self.needs_redraw:
+                self.perform_redraw()
+        except Exception as e:
+            # If a rendering or parsing error happens, catch it so the GUI loop doesn't permanently die
+            self.log_event(f"[GUI ERROR] Caught exception in main loop: {e}")
+            self.needs_redraw = False 
+            
         self.root.after(50, self.process_queue)
+
+    def send_command(self, cmd_string):
+        if self.sock:
+            try:
+                message = f"{cmd_string}\n"
+                self.sock.sendall(message.encode('utf-8'))
+                self.log_event(f"[TX] Sent command: '{cmd_string}'")
+            except Exception as e:
+                self.log_event(f"[ERROR] Failed to send: {e}")
+        else:
+            self.log_event(f"[SYSTEM] Cannot send '{cmd_string}'. Not connected.")
 
     def parse_message(self, msg):
         if not msg: return
@@ -242,7 +331,7 @@ class CybotGUI:
 
             # If we are currently tracking an object, plot its Ping distance!
             if self.tracking_object:
-                self.draw_scan_point(angle, ping_distance)
+                self.add_scan_point(angle, ping_distance)
 
             # Store current value for the next loop
             self.prev_ir_value = ir_value
@@ -264,41 +353,44 @@ class CybotGUI:
             amount = float(move_match.group(2))
             if "backward" in direction: amount = -amount
             if "mm" in lower_msg: amount /= 10.0
-            self.update_bot_position(amount)
+
+            # Math for updating world position
+            rad = math.radians(self.bot_heading)
+            self.bot_world_x += amount * math.cos(rad)
+            self.bot_world_y += amount * math.sin(rad) 
+            self.path_points.append((self.bot_world_x, self.bot_world_y))
+            self.queue_redraw()
 
         turn_match = re.search(r"(left|right|turned?)\s*(-?\d+(?:\.\d+)?)", lower_msg)
         if turn_match:
             direction = turn_match.group(1)
             amount = float(turn_match.group(2))
             if "right" in direction: amount = -amount 
-            self.update_bot_heading(amount)
+
+            self.bot_heading += amount
+            self.bot_heading %= 360
+            self.queue_redraw()
 
         if any(keyword in lower_msg for keyword in ["bump", "cliff", "move", "turn", "system", "error", "tx", "scan"]):
             self.log_event(msg)
         else:
             self.log_event(f"[RX] {msg}")
 
-    def update_bot_position(self, distance_cm):
-        pixel_dist = distance_cm * self.pixel_scale
-        rad = math.radians(self.bot_heading)
-        self.bot_x += pixel_dist * math.cos(rad)
-        self.bot_y -= pixel_dist * math.sin(rad) 
-        self.draw_bot()
+    def add_scan_point(self, servo_angle, distance_cm):
+        # 1. Find the exact world coordinates of the scanner on the front of the bot
+        rad_heading = math.radians(self.bot_heading)
+        scanner_x = self.bot_world_x + self.sensor_offset_cm * math.cos(rad_heading)
+        scanner_y = self.bot_world_y + self.sensor_offset_cm * math.sin(rad_heading)
 
-    def update_bot_heading(self, angle_deg):
-        self.bot_heading += angle_deg
-        self.bot_heading %= 360
-        self.draw_bot()
-
-    def draw_scan_point(self, servo_angle, distance):
-        pixel_dist = distance * self.pixel_scale
+        # 2. Plot the object relative to that scanner
         world_angle = self.bot_heading + (servo_angle - 90)
-        rad = math.radians(world_angle)
-        x = self.bot_x + (pixel_dist * math.cos(rad))
-        y = self.bot_y - (pixel_dist * math.sin(rad))
+        rad_scan = math.radians(world_angle)
+        
+        obj_x = scanner_x + distance_cm * math.cos(rad_scan)
+        obj_y = scanner_y + distance_cm * math.sin(rad_scan)
 
-        if 0 <= x <= self.canvas_width and 0 <= y <= self.canvas_height:
-            self.canvas.create_oval(x-2, y-2, x+2, y+2, fill="red", outline="red")
+        self.scan_points.append((obj_x, obj_y))
+        self.queue_redraw()
 
     def log_event(self, text):
         self.log_text.config(state=tk.NORMAL)
