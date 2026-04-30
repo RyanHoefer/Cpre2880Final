@@ -5,3 +5,15 @@ cybot 17:
     cliffRightSignal range: 1900 - 2800
     cliffFrontLeftSignal range: 1000 - 2300
     cliffFrontRightSignal range: 1000 - 2200
+
+cybot 12:
+    right_calibration_value = 7200
+    left_calibration_value = 34050
+
+cybot 17:
+    right_calibration_value = 7320
+    left_calibration_value = 33770
+
+cybot 15:
+    right_calibration_value = 8540
+    left_calibration_value = 36540

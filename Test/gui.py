@@ -29,7 +29,7 @@ class CybotGUI:
         self.bot_heading = 90.0 # 90 is North/Up
         
         # Cybot physical dimensions
-        self.bot_radius_cm = 16.0 / 2.0 
+        self.bot_radius_cm = 33.0 / 2.0 
         self.sensor_offset_cm = 8.0 # Distance from center of bot to the IR/Ping sensors
         
         # Data storage for the infinite map

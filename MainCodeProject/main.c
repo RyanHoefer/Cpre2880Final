@@ -23,11 +23,16 @@ void playSong(){
      * f_4 = 63
      * g_4 = 64
      * a_5 = 65
+     * b=66
+     * c=67
+     * d=68
+     * e=69
+     * f=70
      */
-    unsigned char notes[5] = {60,63,64,61,58};
-    unsigned char duration[5] = {60,120,60,30,30};
+    unsigned char notes[4] = {64,60,64,60};
+    unsigned char duration[4] = {30,15,30,15};
 
-    oi_loadSong(1,5, notes, duration);
+    oi_loadSong(1,4, notes, duration);
     oi_play_song(1);
 }
 
