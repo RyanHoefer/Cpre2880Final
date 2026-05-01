@@ -299,8 +299,8 @@ class CybotGUI:
         ping_coords = []
         ir_coords = []
         
-        max_dist = 100.0 # Fixed scale to 100 cm for stability
-        max_ir = 4000.0  # Fixed scale to 4000 for standard IR ADC stability
+        max_dist = 300.0 # Fixed scale to 100 cm for stability
+        max_ir = 1500.0  # Fixed scale to 4000 for standard IR ADC stability
         
         for angle, ping, ir in sorted_data:
             # Map Angle (0-180) to X coordinate
@@ -337,8 +337,10 @@ class CybotGUI:
         self.path_points = [(0.0, 0.0)]
         self.scan_points = []
         self.cliff_points = []
+        self.bump_points = []
         self.boundary_points = []
         self.tracking_object = False
+        self.raw_scan_data = []
         self.view_cx = 0.0
         self.view_cy = 20.0 # Offset camera slightly up so bot starts near bottom
         self.queue_redraw()
@@ -389,6 +391,8 @@ class CybotGUI:
             # Only execute the heavy drawing function once per frame, if needed
             if self.needs_redraw:
                 self.perform_redraw()
+            if self.needs_raw_redraw:
+                self.perform_raw_redraw()
         except Exception as e:
             # If a rendering or parsing error happens, catch it so the GUI loop doesn't permanently die
             self.log_event(f"[GUI ERROR] Caught exception in main loop: {e}")
@@ -418,6 +422,12 @@ class CybotGUI:
             ping_distance = float(scan_match.group(2))
             ir_value = int(scan_match.group(3))
             ir_distance = (4727.5 * pow(ir_value, -0.829) / 10)
+
+            if self.raw_scan_data and abs(angle - self.raw_scan_data[-1][0]) > 50:
+                self.raw_scan_data = []
+
+            self.raw_scan_data.append((angle, ping_distance, ir_value))
+            self.needs_raw_redraw = True
 
             # Edge case: If starting a new sweep at angle 0, prime the previous value and skip logic
             if angle <= 2: # Give it a degree or two of leeway
@@ -457,16 +467,16 @@ class CybotGUI:
             # return 
 
         # 2. Parse Hazard Detections (Cliff/Boundary)
-        if "cliff" in lower_msg or "boundary" in lower_msg or "object detected" in lower_msg or "bump":
+        if "cliff" in lower_msg or "boundary" in lower_msg or "object detected" in lower_msg or "bump" in lower_msg:
             sensor_angle = 0 # Default (Front Center)
             ping_trigger = False
             # Check specific sensors (check front left/right before generic left/right)
             if "bump" in lower_msg and "left" in lower_msg and "right" in lower_msg:
                 sensor_angle = 0
             elif "bump" in lower_msg and "left" in lower_msg:
-                sensor_angle = 90
+                sensor_angle = 45
             elif "bump" in lower_msg and "right" in lower_msg:
-                sensor_angle = -90
+                sensor_angle = -45
             elif "front left" in lower_msg:
                 sensor_angle = 45
             elif "front right" in lower_msg:

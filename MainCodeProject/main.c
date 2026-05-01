@@ -37,7 +37,7 @@ void playSong(){
 }
 
 int pizzaTemp(int seconds) {
-    int temp = 165 - (seconds / 5);
+    int temp = 165 - (seconds / 10);
     if (temp < 72) {
         temp = 72;
     }
@@ -63,7 +63,7 @@ void debugCliffSensor() {
 
     while (true) {
         oi_update(sensor_data);
-        lcd_printf("Cliff Front Right Value: %d", sensor_data->cliffFrontRightSignal);
+        lcd_printf("L: %d\nR: %d\nFL: %d\nFR: %d", sensor_data->cliffLeftSignal, sensor_data->cliffRightSignal, sensor_data->cliffFrontLeftSignal, sensor_data->cliffFrontRightSignal);
     }
 
 }
@@ -153,13 +153,13 @@ int mainCode(){
 
             const char *quality;
             if (temp >= 140) {
-                quality = "Still hot!";
+                quality = "Fresh!";
             }
             else if (temp >= 110) {
-                quality = "Warm";
+                quality = "Still hot!";
             }
             else if (temp >= 90) {
-                quality = "Lukewarm";
+                quality = "Warm";
             }
             else {
                 quality = "Cold";
