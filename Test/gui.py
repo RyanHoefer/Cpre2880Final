@@ -39,6 +39,7 @@ class CybotGUI:
         # Hazard Storage
         self.cliff_points = []
         self.boundary_points = []
+        self.bump_points = []
 
         # --- Sensor Fusion Variables ---
         self.tracking_object = False
@@ -219,19 +220,25 @@ class CybotGUI:
             if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
                 self.canvas.create_oval(sx-4, sy-4, sx+4, sy+4, fill="#0088ff", outline="#0088ff")
 
-        # 6. Draw Bot Body
+        # 6. Draw Bumps (Red)
+        for wx, wy in self.bump_points:
+            sx, sy = self.world_to_screen(wx, wy)
+            if -10 <= sx <= self.canvas_width+10 and -10 <= sy <= self.canvas_height+10:
+                self.canvas.create_oval(sx-4, sy-4, sx+4, sy+4, fill="#ff0000", outline="#ff0000")
+
+        # 7. Draw Bot Body
         bot_sx, bot_sy = self.world_to_screen(self.bot_world_x, self.bot_world_y)
         r_pixels = self.bot_radius_cm * self.zoom
         self.canvas.create_oval(bot_sx - r_pixels, bot_sy - r_pixels, bot_sx + r_pixels, bot_sy + r_pixels, fill="blue", outline="white")
         
-        # 7. Draw Scanner Origin Point (Front of bot)
+        # 8. Draw Scanner Origin Point (Front of bot)
         rad_heading = math.radians(self.bot_heading)
         scan_wx = self.bot_world_x + self.sensor_offset_cm * math.cos(rad_heading)
         scan_wy = self.bot_world_y + self.sensor_offset_cm * math.sin(rad_heading)
         scan_sx, scan_sy = self.world_to_screen(scan_wx, scan_wy)
         self.canvas.create_oval(scan_sx-3, scan_sy-3, scan_sx+3, scan_sy+3, fill="red", outline="white")
 
-        # 8. Draw Heading Arrow
+        # 9. Draw Heading Arrow
         end_wx = self.bot_world_x + (20 * math.cos(rad_heading))
         end_wy = self.bot_world_y + (20 * math.sin(rad_heading))
         end_sx, end_sy = self.world_to_screen(end_wx, end_wy)
@@ -366,11 +373,17 @@ class CybotGUI:
             # return 
 
         # 2. Parse Hazard Detections (Cliff/Boundary)
-        if "cliff" in lower_msg or "boundary" in lower_msg or "object detected" in lower_msg:
+        if "cliff" in lower_msg or "boundary" in lower_msg or "object detected" in lower_msg or "bump":
             sensor_angle = 0 # Default (Front Center)
-            
+            ping_trigger = False
             # Check specific sensors (check front left/right before generic left/right)
-            if "front left" in lower_msg:
+            if "bump" in lower_msg and "left" in lower_msg and "right" in lower_msg:
+                sensor_angle = 0
+            elif "bump" in lower_msg and "left" in lower_msg:
+                sensor_angle = 90
+            elif "bump" in lower_msg and "right" in lower_msg:
+                sensor_angle = -90
+            elif "front left" in lower_msg:
                 sensor_angle = 45
             elif "front right" in lower_msg:
                 sensor_angle = -45
@@ -379,10 +392,13 @@ class CybotGUI:
             elif "right" in lower_msg:
                 sensor_angle = -90
             elif "object detected" in lower_msg:
-                sensor_angle = 0
-                
+                self.add_scan_point(90, 10)
+                ping_trigger = True
+            
+            is_bump = "bump" in lower_msg
             is_cliff = "cliff" in lower_msg
-            self.add_hazard_point(sensor_angle, is_cliff)
+            if not ping_trigger:
+                self.add_hazard_point(sensor_angle, is_cliff, is_bump)
 
         move_match = re.search(r"(forward|backward|moved?)\s*(-?\d+(?:\.\d+)?)", lower_msg)
         if move_match:
@@ -429,7 +445,7 @@ class CybotGUI:
         self.scan_points.append((obj_x, obj_y))
         self.queue_redraw()
 
-    def add_hazard_point(self, relative_angle, is_cliff):
+    def add_hazard_point(self, relative_angle, is_cliff, is_bump):
         """Calculates the world coordinates of the hazard at the edge of the bot"""
         # Calculate world angle by adding bot's heading to the relative sensor angle
         world_angle = self.bot_heading + relative_angle
@@ -441,6 +457,8 @@ class CybotGUI:
         
         if is_cliff:
             self.cliff_points.append((hazard_x, hazard_y))
+        elif is_bump:
+            self.bump_points.append((hazard_x, hazard_y))
         else:
             self.boundary_points.append((hazard_x, hazard_y))
             
