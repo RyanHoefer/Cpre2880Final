@@ -45,7 +45,12 @@ class CybotGUI:
         self.tracking_object = False
         self.prev_ir_value = 0
 
+        # --- Raw Data Window Variables ---
+        self.raw_scan_data = [] # List of tuples: (angle, ping, ir)
+        self.needs_raw_redraw = False
+
         self.setup_ui()
+        self.setup_raw_data_window()
         self.setup_bindings()
         
         self.root.after(100, self.process_queue)
@@ -124,6 +129,29 @@ class CybotGUI:
         tk.Label(self.root, text="Event Log").pack(pady=(10, 0))
         self.log_text = tk.Text(self.root, height=8, width=80, state=tk.DISABLED, bg="#f0f0f0")
         self.log_text.pack(pady=5)
+
+    def setup_raw_data_window(self):
+        """Sets up the secondary window for plotting raw telemetry data."""
+        self.raw_window = tk.Toplevel(self.root)
+        self.raw_window.title("Raw Sensor Telemetry")
+        self.raw_window.geometry("800x700")
+        
+        # If the user clicks the 'X', just hide the window instead of destroying it
+        self.raw_window.protocol("WM_DELETE_WINDOW", self.raw_window.withdraw)
+
+        tk.Label(self.raw_window, text="Ping Sensor (Distance in cm)", font=("Arial", 12, "bold")).pack(pady=(10, 0))
+        self.ping_canvas = tk.Canvas(self.raw_window, width=700, height=250, bg="#222222")
+        self.ping_canvas.pack(pady=5)
+
+        tk.Label(self.raw_window, text="IR Sensor (Raw ADC Value)", font=("Arial", 12, "bold")).pack(pady=(10, 0))
+        self.ir_canvas = tk.Canvas(self.raw_window, width=700, height=250, bg="#222222")
+        self.ir_canvas.pack(pady=5)
+        
+        self.perform_raw_redraw()
+
+    def show_raw_window(self):
+        self.raw_window.deiconify()
+        self.raw_window.lift()
 
     def setup_bindings(self):
         self.root.bind("<w>", lambda event: self.send_command("q"))
@@ -245,6 +273,62 @@ class CybotGUI:
         self.canvas.create_line(bot_sx, bot_sy, end_sx, end_sy, fill="yellow", arrow=tk.LAST, width=2)
 
         self.needs_redraw = False
+
+    def perform_raw_redraw(self):
+        """Redraws the separate Ping and IR plots on the secondary window."""
+        self.ping_canvas.delete("all")
+        self.ir_canvas.delete("all")
+        
+        c_width = 700
+        c_height = 250
+        margin = 30
+        
+        # Draw Background Grids
+        self.ping_canvas.create_line(margin, c_height-margin, c_width-margin, c_height-margin, fill="gray")
+        self.ping_canvas.create_line(margin, margin, margin, c_height-margin, fill="gray")
+        self.ir_canvas.create_line(margin, c_height-margin, c_width-margin, c_height-margin, fill="gray")
+        self.ir_canvas.create_line(margin, margin, margin, c_height-margin, fill="gray")
+        
+        if not self.raw_scan_data:
+            self.needs_raw_redraw = False
+            return
+
+        # Sort data by angle just in case packets arrive slightly out of order
+        sorted_data = sorted(self.raw_scan_data, key=lambda x: x[0])
+        
+        ping_coords = []
+        ir_coords = []
+        
+        max_dist = 100.0 # Fixed scale to 100 cm for stability
+        max_ir = 4000.0  # Fixed scale to 4000 for standard IR ADC stability
+        
+        for angle, ping, ir in sorted_data:
+            # Map Angle (0-180) to X coordinate
+            sx = margin + (angle / 180.0) * (c_width - 2 * margin)
+            
+            # Map Ping Distance (0-100cm) to Y coordinate (inverted)
+            ping_clamped = min(ping, max_dist)
+            sy_ping = (c_height - margin) - (ping_clamped / max_dist) * (c_height - 2 * margin)
+            ping_coords.extend([sx, sy_ping])
+            
+            # Map IR Value (0-4000) to Y coordinate (inverted)
+            ir_clamped = min(ir, max_ir)
+            sy_ir = (c_height - margin) - (ir_clamped / max_ir) * (c_height - 2 * margin)
+            ir_coords.extend([sx, sy_ir])
+
+        # Draw Lines
+        if len(ping_coords) >= 4: # Need at least 2 points (4 elements) to draw a line
+            self.ping_canvas.create_line(*ping_coords, fill="#00ffff", width=2)
+            self.ir_canvas.create_line(*ir_coords, fill="#ff5555", width=2)
+
+        # Draw Points
+        for i in range(0, len(ping_coords), 2):
+            px, py = ping_coords[i], ping_coords[i+1]
+            ix, iy = ir_coords[i], ir_coords[i+1]
+            self.ping_canvas.create_oval(px-2, py-2, px+2, py+2, fill="white")
+            self.ir_canvas.create_oval(ix-2, iy-2, ix+2, iy+2, fill="white")
+
+        self.needs_raw_redraw = False
 
     def reset_map_data(self):
         self.bot_world_x = 0.0
